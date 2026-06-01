@@ -1,23 +1,27 @@
-# ----------------------------------Doel van de tool----------------------------------
+# ----------------------------------Doel van de tool ACHIEVED----------------------------------
 # hoe minder ik moet ingeven of klikken hoe beter (dus als het een Picking list kan inlezen zodat ik het niet moet typen, perfect)
 # ik zou vrije selectie geven over welke mails je wil, met checkboxes voor extra, misschien standard gewoon het meest voorkomende file key pswfile pswkey, en een checkbox "other" waar je zelf iets kan invullen moest er iets uitzonderlijks nodig zijn
 # meerdere recipients tegelijk laten invullen
 # idealiter salesforce integratie maar dat is een long shot
 # vervaldatum standard een maand, maar overschrijfbaar indien nodig
 
-# ----------------------------------TO DO----------------------------------
-# CRID kan via OC in toekomst
+# ----------------------------------stretch goals DONE----------------------------------
+
 # EAN (en dus product type) kan via ingewerkte excel file, updates moeten dus gebeuren aan die excel file
-#  Check even bij IT (stef of "kletskop") of de ERP tool aangepast kan worden voor CRID en product type
+#  Check even bij IT (quote Timmy: "stef of kletskop") of de ERP tool aangepast kan worden voor CRID en product type
 # Check if the found 
 #        als PO \d{4}F... of (RMA?)  
 #        dan PO = temp, PO = ICO, ICO = temp
 #        (bovenstaande om ICO en PO te wisselen in geval van FOC of RMA)
-# Can I use GIB sans MT 11 instead of APTOS 12? -> OPMAAK
 #  wat als er meerdere EAN codes zijn die files kunnen geven? -> in dat geval een multiple choice "waarvan wil je files leveren?"
 #  En wat als er meerdere orders gecombineerd moeten worden? (meerdere opties kunnen selecteren en aantal optellen)
-#  stel ESD over tijd-> neem dan dag van vandaag als startuur
 
+# ----------------------------------stretch goals To Do----------------------------------
+# ESD uitlezen om accurater de vervaldatum in te geven automatisch
+# als ESD overdatum,  dan vandaag als default nemen + 31 dagen voor vervaldag
+# opmaak aanpassen van Aptos 12 naar Gib sans mt 11?
+# CRID kan via OC in toekomst, dus best al implementeren
+# meerdere mails niet altijd naar dezelfde recipients!
 
 
 import re
@@ -34,22 +38,25 @@ def extract_pdf_data(path):
     doc = ""
     for page in pdfium.PdfDocument(path):
         doc += page.get_textpage().get_text_range()
+        
+    print(doc)
     
     if re.search("ORDER CONFIRMATION",doc):
         PO = re.findall(r"(?<=Purchase Order number : ).+",doc)[0]
         ICO = re.findall(r"(?<=Sales Order Number : )\d+",doc)[0]
         orderAmounts = re.findall(r"\d+(?= [\d,]+?.\d\d [\d,]+?.\d\d)",doc)
-    elif re.search("PICKING LIST", doc):
+    elif re.search("PICKING LIST", doc) or re.search("PACKING SLIP",doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
         orderAmounts = re.findall(r"(?<= \d\d/\d\d/\d\d )\d+",doc)
 
+
     # check to see if FOC or RMA
-    if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
+    """if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
         print("This is a FOC or RMA order")
         temp = PO
         PO = ICO
-        ICO = temp
+        ICO = temp"""
     
     tokenList = []
     if re.search(r"\d{13}",doc):
@@ -89,6 +96,7 @@ def clear_all():
     tkAmount.set("")
     tkType.set("")
     tkCRID.set("")
+    textMail.delete(0.0,"end")
     listTokenType.delete(0,"end")
     tkExpire.set((datetime.today() + timedelta(days=31)).strftime(timeformat).upper())
     check_default()
@@ -105,7 +113,9 @@ def get_data_to_mails():
     expireDate = tkExpire.get()
     devOps = tkDevOps.get()
     duplicates = tkDuplicate.get()
-    
+    customerName = tkCustomer.get()
+    Url = tkUrl.get()
+
     if duplicates == 1:
         dupeTags = ["",""]
     else: 
@@ -115,7 +125,7 @@ def get_data_to_mails():
         dupe = dupeTags[dupe]
         #mailList, ftpList, devOps
         if devOps:
-            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,dupe)
+            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,customerName,dupe)
         else:
             for i in range(0,len(boxList)):
                 if boxBoxList[i].get():       #triggert enkel op een value 1 wat wil zeggen dat de box aangevinkt staat
@@ -226,7 +236,7 @@ def draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, recipients,dupe
     outlook = win32.Dispatch("Outlook.Application")
 
     mail = outlook.CreateItem(0)  #  0: olMailItem
-    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" \/ PO: "+PO+" / CRID: "+CRID+")"+dupe
+    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe
     mail.Body = "Dear Customer,\n\n\nPlease find attached the "+deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe+mailSignature
     mail.To = recipients
     mail.save()
@@ -247,7 +257,7 @@ def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate,
     mail.To = recipients
     mail.save()
 
-def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,dupe):
+def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,Url,customerName,dupe):
     """ maakt een draft en slaat die op in de inbox van de gebruiker
         alle inputs zijn strings, ook de getallen, 
         meerdere recipients in 1 string worden gescheiden door een puntkomma ;
@@ -257,7 +267,7 @@ def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,dupe):
 
     mail = outlook.CreateItem(0)  #  0: olMailItem
     mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe
-    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+dupe+"\n\n"+deliveryAmount+"pcs PRODUCTION "+tokenType+" URL "+"\nare available @:\n\n\\\\srv-colo1-fs\\tid-dpx\\"+mailSignature
+    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+dupe+"\n\n"+deliveryAmount+"pcs PRODUCTION "+tokenType+" for "+customerName+" URL: "+Url+"\nare available @: \\\\srv-colo1-fs\\tid-dpx\\"+ICO+customerName+mailSignature
     mail.To = "devops@onespan.com"
     mail.save()
 
@@ -366,7 +376,7 @@ listTokenType.grid(row=6,column=1,sticky="W",columnspan=2, ipadx=40)
 
 # apart venster "Frame", puur voor opmaak
 mailFrame = tk.Frame(root)
-mailFrame.grid(row=0,column=5,rowspan=6,sticky="NE")
+mailFrame.grid(row=0,column=5,rowspan=11,sticky="NE")
 
 # label voor keuze uit mails (in dat frame)
 lbCheckBoxes =tk.Label(mailFrame,text="choose your mails here:").grid(row=0,column=0,sticky="W")
@@ -422,16 +432,16 @@ boxList.append(tkKeyZip)
 boxBoxList.append(tkKeyZipBox)
 boxftpList.append(tkKeyZipFTP)
 
-tkCSV = tk.StringVar()
-tkCSV.set("CSV")
-tkCSVBox = tk.IntVar()
-tkCSVBox.set(0)
-cbFile = tk.Checkbutton(mailFrame,textvariable=tkCSV,variable=tkCSVBox).grid(row=6,column=0,sticky="W")
-tkCSVFTP = tk.IntVar()
-cbCSVFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkCSVFTP).grid(row=6,column=1,sticky="W")
-boxList.append(tkCSV)
-boxBoxList.append(tkCSVBox)
-boxftpList.append(tkCSVFTP)
+tkSerial = tk.StringVar()
+tkSerial.set("serial list")
+tkSerialBox = tk.IntVar()
+tkSerialBox.set(0)
+cbFile = tk.Checkbutton(mailFrame,textvariable=tkSerial,variable=tkSerialBox).grid(row=6,column=0,sticky="W")
+tkSerialFTP = tk.IntVar()
+cbSerialFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkSerialFTP).grid(row=6,column=1,sticky="W")
+boxList.append(tkSerial)
+boxBoxList.append(tkSerialBox)
+boxftpList.append(tkSerialFTP)
 
 lbShared = tk.Label (mailFrame, text="shared keys: ").grid(row=7,column=0,sticky="W")
 tkShared = tk.IntVar()
@@ -456,9 +466,14 @@ spinDuplicate = tk.Spinbox(mailFrame,from_=1,to=9,wrap=True,textvariable=tkDupli
 tkDevOps = tk.IntVar()
 cbDevOps = tk.Checkbutton(mailFrame,text="devOps", variable=tkDevOps,command=devops_check).grid(row=1,column=1,sticky="W")
 
-# bijkomend lijstje met A,B,C... voor orders waarbij meerdere files verstuurd moeten worden
+lbCustomer = tk.Label(root,text="Customer name (devops): ").grid(row=7,column=0)
+tkCustomer = tk.StringVar()
+entryCustomer = tk.Entry(root, textvariable=tkCustomer).grid(row=7,column=1)
 
-# bijkomend toggle voor shared of split keys
+lbUrl = tk.Label(root,text="URL (devops): ").grid(row=7, column=2)
+tkUrl = tk.StringVar()
+entryUrl = tk.Entry(root,textvariable=tkUrl).grid(row=7,column=3)
+# url en klantnaam moet dus ook ingevuld kunnen worden voor devOps
 
 # make a clear button for the file path
 # btnClear = tk.Button(root, text="clear path", command=clear_path).grid(row=0,column=4)
@@ -467,7 +482,14 @@ cbDevOps = tk.Checkbutton(mailFrame,text="devOps", variable=tkDevOps,command=dev
 btnClearALL = tk.Button(root, text="clear all", command=clear_all).grid(row=0,column=4)
 
 # make a run button -> first it gets all data from all fields, then it drafts the mails
-btnRun = tk.Button(root, text= "draft mails", command=get_data_to_mails).grid(row=7,column=1)
+btnRun = tk.Button(root, text= "draft mails", command=get_data_to_mails).grid(row=8,column=4)
+lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=7)
+
+# customizing the window
+
+#p1 = tk.PhotoImage(file = 'Onespan_Logo.png')
+#root.iconphoto(False, p1)
+root.title("Onespan: send-a-raven                                             -- version 0.1.0 (beta)")
 
 root.mainloop()
 
