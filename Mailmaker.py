@@ -24,8 +24,10 @@ import re
 import pypdfium2 as pdfium
 import win32com.client as win32
 import tkinter as tk
+from tkinter import font
 from tkinterdnd2 import DND_FILES, TkinterDnD
-
+from datetime import datetime, timedelta
+timeformat = '%d%b%Y'   #global variable om ineens alle instanties te kunnen aanpassen in toekomstige versies
 
 def extract_pdf_data(path):
     """function that reads either a PL or an OC """
@@ -43,7 +45,7 @@ def extract_pdf_data(path):
         orderAmounts = re.findall(r"(?<= \d\d/\d\d/\d\d )\d+",doc)
 
     # check to see if FOC or RMA
-    if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO):
+    if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
         print("This is a FOC or RMA order")
         temp = PO
         PO = ICO
@@ -60,8 +62,11 @@ def extract_pdf_data(path):
         read_amount_and_type(bigList)
     for item in bigList:
         listTokenType.insert(tk.END, item)
-    return(PO,ICO)
 
+    # check for, and remove, trailing whitespaces
+    PO = " ".join(PO.split())
+    ICO = " ".join(ICO.split())
+    return(PO,ICO)
 
 def drop(event):
     """ definieer wat er moet gebeuren op het moment dat je een pdf dropt in het tekstvak """
@@ -85,18 +90,54 @@ def clear_all():
     tkType.set("")
     tkCRID.set("")
     listTokenType.delete(0,"end")
+    tkExpire.set((datetime.today() + timedelta(days=31)).strftime(timeformat).upper())
+    check_default()
+    tkDuplicate.set(1)
 
-def get_data():
-    """ wrapper functie voor drawmail die alle data verzameld en dan de mail mail opmaakt """
+def get_data_to_mails():
+    """ wrapper functie voor draw_mail (en de andere types) die alle data verzameld en dan de mail mail opmaakt """
     deliveryAmount = tkAmount.get()
     tokenType = tkType.get()
-    deliveryFile = ""
     ICO = tkICO.get()
     PO = tkPO.get()
     CRID = tkCRID.get()
-    recipients = ""
-    expiryDate = ""
-    draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiryDate,recipients)
+    recipients = textMail.get(0.0,"end")
+    expireDate = tkExpire.get()
+    devOps = tkDevOps.get()
+    duplicates = tkDuplicate.get()
+    
+    if duplicates == 1:
+        dupeTags = ["",""]
+    else: 
+        dupeTags = [""," A"," B"," C"," D"," E"," F"," G"," H"," I"]
+
+    for dupe in range(1,duplicates+1):
+        dupe = dupeTags[dupe]
+        #mailList, ftpList, devOps
+        if devOps:
+            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,dupe)
+        else:
+            for i in range(0,len(boxList)):
+                if boxBoxList[i].get():       #triggert enkel op een value 1 wat wil zeggen dat de box aangevinkt staat
+                    deliveryFile = boxList[i].get()
+                    if boxftpList[i].get():      #als de overeenkomende ftp box ook aanstaat dan FTP mail in plaats van gewoon
+                        draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, recipients,dupe)
+                    else: 
+                        draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,recipients,dupe)
+        if tkShared.get() !=0:
+            for i in range(1, tkShared.get()+1):
+                deliveryFile = "shared key " + str(i)
+                if boxftpList[1].get():
+                    draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, recipients,dupe)
+                else:
+                    draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,recipients,dupe)
+        elif tkSplit.get() !=0:
+            for i in range(1, tkSplit.get()+1):
+                deliveryFile = "split key " + str(i)
+                if boxftpList[1].get():
+                    draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, recipients,dupe)
+                else:
+                    draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,recipients,dupe)
 
 def read_amount_and_type(orderlist):
     """ splitst de EAN orderlijn naar type (dat verder verwerkt wordt) en naar hoeveelheid,
@@ -114,7 +155,6 @@ def read_amount_and_type(orderlist):
         for order in orderlist:
             orderAmount += int(re.split(": ",order)[0])
         tkAmount.set(str(orderAmount))
-
 
 def find_order(order):
     """filtert alle EAN descriptions (order) naar een output die wij in mails kunnen gebruiken (ordertype)
@@ -155,94 +195,174 @@ def find_order(order):
     return ordertype
 
 def call_find_order(event):
-    """ output van curseselection is (0,) met telkens een comma en een cijfer toegevoegd """
+    """ functie die meerdere inputs verwerkt en telkens read_amount_and_type oproept
+        output van curseselection is (0,) met telkens een comma en een cijfer toegevoegd 
+        """
     templist = []
     bigList = listTokenType.get(0,"end")
     for k in listTokenType.curselection():
         templist.append(bigList[k])
     read_amount_and_type(templist)
 
-def draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiryDate, recipients):
+def date_values():
+    """functie die 'alle' mogelijke datums weergeeft waartussen de spinbox kan draaien
+        dit door 45 dagen terug te gaan en 90 dagen verder van de voorkeursdatum
+        de voorkeursdatum is datum vandaag + 1 maand (dit door gemiddelde 4.35 weken per maand op te tellen)
+    """
+    dates = []
+    defaultDate = (datetime.today() + timedelta(days=31)).strftime(timeformat).upper()
+    for i in range(0,91):
+        dates.append((datetime.strptime(defaultDate,timeformat) + timedelta(days=i)).strftime(timeformat).upper())
+    for i in range(-45,0):
+        dates.append((datetime.strptime(defaultDate,timeformat) + timedelta(days=i)).strftime(timeformat).upper())
+    return dates
+
+def draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, recipients,dupe):
     """ maakt een draft en slaat die op in de inbox van de gebruiker
-        alle inputs zijn strings ook de getallen, 
+        alle inputs zijn strings, ook de getallen, 
         meerdere recipients in 1 string worden gescheiden door een puntkomma ;
     """
-    mailSignature = "\n\nBest regards\nOnespan Logistics\n---------------------------------------------------------------------------\nOneSpan destroys the Digipass secrets of Digipass devices a certain period after delivery. This implies that redelivery of your DPX-, PSKC- or PIN-files is not possible anymore after this period.\n---------------------------------------------------------------------------\nIn case you have technical questions, please contact support@OneSpan.com\n---------------------------------------------------------------------------\nNotice of U.S. Export Controls for Restricted Products: Onespan and the Onespan products, technology software, deliverables, technical information, and related documents and materials and/or any other items deemed an export by the U.S. Government or EU jurisdictions are subject to the laws and regulations of the United States and the relevant EU jurisdictions. Diversion contrary to U.S., EU law is strictly prohibited.\nCONFIDENTIALITY NOTICE: The information contained in this transmittal, including any attachment, is privileged and confidential information and is intended only for the person or entity to which it is addressed.\n---------------------------------------------------------------------------"
+    mailSignature = "\n\n\nBest regards\nOnespan Logistics\n\n---------------------------------------------------------------------------\nOneSpan destroys the Digipass secrets of Digipass devices a certain period after delivery. This implies that redelivery of your DPX-, PSKC- or PIN-files is not possible anymore after this period.\n---------------------------------------------------------------------------\nIn case you have technical questions, please contact support@OneSpan.com\n---------------------------------------------------------------------------\nNotice of U.S. Export Controls for Restricted Products: Onespan and the Onespan products, technology software, deliverables, technical information, and related documents and materials and/or any other items deemed an export by the U.S. Government or EU jurisdictions are subject to the laws and regulations of the United States and the relevant EU jurisdictions. Diversion contrary to U.S., EU law is strictly prohibited.\nCONFIDENTIALITY NOTICE: The information contained in this transmittal, including any attachment, is privileged and confidential information and is intended only for the person or entity to which it is addressed.\n---------------------------------------------------------------------------"
     outlook = win32.Dispatch("Outlook.Application")
 
     mail = outlook.CreateItem(0)  #  0: olMailItem
-    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"
-    mail.Body = "Dear Customer,\n\nPlease find attached the "+deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+mailSignature
+    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" \/ PO: "+PO+" / CRID: "+CRID+")"+dupe
+    mail.Body = "Dear Customer,\n\n\nPlease find attached the "+deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe+mailSignature
     mail.To = recipients
     mail.save()
 
+def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate, recipients,dupe):
+    """ maakt een draft en slaat die op in de inbox van de gebruiker
+        alle inputs zijn strings, ook de getallen, 
+        meerdere recipients in 1 string worden gescheiden door een puntkomma ;
+    """
+    mailSignature = "\n\n\nBest regards\nOnespan Logistics\n\n---------------------------------------------------------------------------\nOneSpan destroys the Digipass secrets of Digipass devices a certain period after delivery. This implies that redelivery of your DPX-, PSKC- or PIN-files is not possible anymore after this period.\n---------------------------------------------------------------------------\nIn case you have technical questions, please contact support@OneSpan.com\n---------------------------------------------------------------------------\nNotice of U.S. Export Controls for Restricted Products: Onespan and the Onespan products, technology software, deliverables, technical information, and related documents and materials and/or any other items deemed an export by the U.S. Government or EU jurisdictions are subject to the laws and regulations of the United States and the relevant EU jurisdictions. Diversion contrary to U.S., EU law is strictly prohibited.\nCONFIDENTIALITY NOTICE: The information contained in this transmittal, including any attachment, is privileged and confidential information and is intended only for the person or entity to which it is addressed.\n---------------------------------------------------------------------------"
+    outlook = win32.Dispatch("Outlook.Application")
+
+    date = str(datetime.today().strftime('%Y%m%d'))
+    ftpPart = "\n\nhttps://ftp.onespan.com"+"\nusername: "+ICO+"_"+date+"_"+deliveryFile.upper() + "\npassword: \naccount expires: " + expiredate
+    mail = outlook.CreateItem(0)  #  0: olMailItem
+    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")" + dupe
+    mail.Body = "Dear Customer,\n\n\nPlease find herewith your credentials where you can download the " +deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe +ftpPart + mailSignature
+    mail.To = recipients
+    mail.save()
+
+def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,dupe):
+    """ maakt een draft en slaat die op in de inbox van de gebruiker
+        alle inputs zijn strings, ook de getallen, 
+        meerdere recipients in 1 string worden gescheiden door een puntkomma ;
+    """
+    mailSignature = "\n\n\nBest regards\nOnespan Logistics\n\n---------------------------------------------------------------------------\nOneSpan destroys the Digipass secrets of Digipass devices a certain period after delivery. This implies that redelivery of your DPX-, PSKC- or PIN-files is not possible anymore after this period.\n---------------------------------------------------------------------------\nIn case you have technical questions, please contact support@OneSpan.com\n---------------------------------------------------------------------------\nNotice of U.S. Export Controls for Restricted Products: Onespan and the Onespan products, technology software, deliverables, technical information, and related documents and materials and/or any other items deemed an export by the U.S. Government or EU jurisdictions are subject to the laws and regulations of the United States and the relevant EU jurisdictions. Diversion contrary to U.S., EU law is strictly prohibited.\nCONFIDENTIALITY NOTICE: The information contained in this transmittal, including any attachment, is privileged and confidential information and is intended only for the person or entity to which it is addressed.\n---------------------------------------------------------------------------"
+    outlook = win32.Dispatch("Outlook.Application")
+
+    mail = outlook.CreateItem(0)  #  0: olMailItem
+    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe
+    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+dupe+"\n\n"+deliveryAmount+"pcs PRODUCTION "+tokenType+" URL "+"\nare available @:\n\n\\\\srv-colo1-fs\\tid-dpx\\"+mailSignature
+    mail.To = "devops@onespan.com"
+    mail.save()
+
+def shared_keys_toggled():
+    """set other key values to 0 to avoid duplicates"""
+    tkSplit.set(0)
+    tkKeyBox.set(0)
+    tkKeyFTP.set(0)
+
+def split_keys_toggled():
+    """set other key values to 0 to avoid duplicates"""
+    tkShared.set(0)
+    tkKeyBox.set(0)
+    tkKeyFTP.set(0)
+
+def single_key_toggled():
+    """set other key values to 0 to avoid duplicates"""
+    tkShared.set(0)
+    tkSplit.set(0)
+
+def check_default():
+    """ checks the default boxes whenever needed"""
+    defaultbox = [1,1,1,1,0,0]
+    defaultftp = [1,1,0,0,0,0]
+    for i in range(0, len(boxList)):
+        boxBoxList[i].set(defaultbox[i])
+        boxftpList[i].set(defaultftp[i])
+    tkSplit.set(0)
+    tkShared.set(0)
+
+def devops_check():
+    """ when devops is clicked it will uncheck all other checkboxes by default
+        when it is unclicked it sets other checkboxes back to the default mailing
+    """
+    if tkDevOps.get():              #triggert enkel als tkDevops AANGEZET wordt, wat wil zeggen dat al de rest uit moet
+        for i in range(0,len(boxList)):     #nu alles 1 voor 1 uitzetten
+            boxBoxList[i].set(0)
+            boxftpList[i].set(0)
+    else: 
+        check_default()
 
 # hoofdscherm opmaken, naam is root alle widgets die op het hoofdscherm komen moeten naar root verwijzen
+# ineens ook koppelen aan drag en drop, dat wil zeggen dat je de file ANYWHERE op het hoofdscherm kan laten vallen
 root = TkinterDnD.Tk()  
-
+root.drop_target_register(DND_FILES)
+root.dnd_bind("<<Drop>>",drop)
 
 # tekstje voor drag en drop uit te leggen, grid zorgt voor plaatsing
-lbDND = tk.Label(root,text="Drop OC or PL here:")
-
-# voor user friendliness zorg ik ervoor dat de tekst links en lege ruimte onder het vak ook beschikbaar zijn als drag-and-drop
-lbDND.drop_target_register(DND_FILES)
-lbDND.dnd_bind('<<Drop>>', drop)
+lbDND = tk.Label(root,text="drag OC or PL anywhere:")
 lbDND.grid(row=0, column=0)
 
 
-# drag and drop functionaliteit zelf
+# venster waar het pad naar de file in komt
 entryPath = tk.Entry(root)
-entryPath.drop_target_register(DND_FILES)
-entryPath.dnd_bind('<<Drop>>', drop)
 entryPath.grid(row=0,column=1,columnspan=3,sticky="W", ipadx=100)
 
 # Label as spacer:
 lbSpacer1 = tk.Label(root,text="---------------------")
-
-# voor user friendliness zorg ik ervoor dat de tekst links en lege ruimte onder het vak ook beschikbaar zijn als drag-and-drop
-lbSpacer1.drop_target_register(DND_FILES)
-lbSpacer1.dnd_bind('<<Drop>>', drop)
 lbSpacer1.grid(row=1, column=0)
 
 # tweede spacer, deze is niet nodig als spacer maar dient puur zodat een drag en drop vak hier kan gemaakt worden
 lbSpacer2 = tk.Label(root,text="----------------------------------------------------------------")
-
-# voor user friendliness zorg ik ervoor dat de tekst links en lege ruimte onder het vak ook beschikbaar zijn als drag-and-drop
-lbSpacer2.drop_target_register(DND_FILES)
-lbSpacer2.dnd_bind('<<Drop>>', drop)
 lbSpacer2.grid(row=1, column=1,sticky="W",columnspan=3)
 
+# label en tekstvak voor recipients, tekstvak moet groot genoeg zijn om meerdere mail-adressen op te vangen, gescheiden door ";" ","" or " " or "\n"
+lbMail = tk.Label(root, text="recipients").grid(row=2, column=0)
+textMail = tk.Text(root,width=40,height=5)
+textMail.grid(row=2,column=1,columnspan=3,sticky="W")
+
 # Label en tekstvak voor ICO
-lbICO = tk.Label(root, text="ICO/Sales order: ").grid(row=2,column=0)
+lbICO = tk.Label(root, text="ICO/Sales order: ").grid(row=3,column=0)
 tkICO = tk.StringVar()
-entryICO = tk.Entry(root, textvariable= tkICO).grid(row=2,column=1)
+entryICO = tk.Entry(root, textvariable= tkICO).grid(row=3,column=1)
 
 # label en tekstvak voor PO
-lbPO = tk.Label(root,text="PO number: ").grid(row=2,column=2)
+lbPO = tk.Label(root,text="PO number: ").grid(row=3,column=2)
 tkPO = tk.StringVar()
-entryPO = tk.Entry(root, textvariable=tkPO).grid(row=2,column=3)
+entryPO = tk.Entry(root, textvariable=tkPO).grid(row=3,column=3)
 
 # label en tekstvak voor CRID
-lbCRID = tk.Label(root,text="CRID: ").grid(row=3,column=0)
+lbCRID = tk.Label(root,text="CRID: ").grid(row=4,column=0)
 tkCRID = tk.StringVar()
-entryCRID = tk.Entry(root, textvariable=tkCRID).grid(row=3,column=1)
+entryCRID = tk.Entry(root, textvariable=tkCRID).grid(row=4,column=1)
+
+# label en tekstvak voor expiration date
+lbExpire = tk.Label (root, text="expire: ").grid(row=4,column=2)
+tkExpire = tk.StringVar()
+spinExpire = tk.Spinbox(root,textvariable=tkExpire,values=date_values(),state="normal",wrap=True).grid(row=4,column=3)
 
 
 # label en tekstvak voor token amount
-lbAmount = tk.Label(root,text="Token Amount: ").grid(row=4,column=0)
+lbAmount = tk.Label(root,text="Token Amount: ").grid(row=5,column=0)
 tkAmount = tk.StringVar()
-entryAmount = tk.Entry(root, textvariable=tkAmount).grid(row=4,column=1)
+entryAmount = tk.Entry(root, textvariable=tkAmount).grid(row=5,column=1)
 
 #  label en tekstvak voor TokenType
-lbType = tk.Label(root,text="Token Type: ").grid(row=4,column=2)
+lbType = tk.Label(root,text="Token Type: ").grid(row=5,column=2)
 tkType = tk.StringVar()
-entryType = tk.Entry(root, textvariable=tkType).grid(row=4,column=3)
+entryType = tk.Entry(root, textvariable=tkType).grid(row=5,column=3)
 
 # label en listbox voor alle order elementen onder deze ICO
-lbTokenType = tk.Label(root,text="Select order(s)").grid(row=5,column=0)
+lbTokenType = tk.Label(root,text="Select order(s)").grid(row=6,column=0)
 listTokenType = tk.Listbox(root, selectmode="extended")
 listTokenType.bind('<<ListboxSelect>>',call_find_order)
-listTokenType.grid(row=5,column=1,sticky="W",columnspan=2, ipadx=40)
+listTokenType.grid(row=6,column=1,sticky="W",columnspan=2, ipadx=40)
 
 # apart venster "Frame", puur voor opmaak
 mailFrame = tk.Frame(root)
@@ -252,39 +372,89 @@ mailFrame.grid(row=0,column=5,rowspan=6,sticky="NE")
 lbCheckBoxes =tk.Label(mailFrame,text="choose your mails here:").grid(row=0,column=0,sticky="W")
 
 # lijstje van alle opties voor mails (ook in dat frame)
+boxList = []
+boxBoxList = []
+boxftpList = []
+
 tkFile = tk.StringVar()
 tkFile.set("file")
 tkFileBox = tk.IntVar()
 tkFileBox.set(1)
-cbFile = tk.Checkbutton(mailFrame,textvariable=tkFile,variable=tkFileBox).grid(row=1,column=0,sticky="W")
-
+cbFile = tk.Checkbutton(mailFrame,textvariable=tkFile,variable=tkFileBox).grid(row=2,column=0,sticky="W")
+tkFileFTP = tk.IntVar()
+tkFileFTP.set(1)
+cbFileFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkFileFTP).grid(row=2,column=1,sticky="W")
+boxList.append(tkFile)
+boxBoxList.append(tkFileBox)
+boxftpList.append(tkFileFTP)
 
 tkKey = tk.StringVar()
-tkKey.set("key 1")
-cbKey = tk.Checkbutton(mailFrame,textvariable=tkKey).grid(row=2,column=0,sticky="W")
+tkKey.set("key")
+tkKeyBox= tk.IntVar()
+tkKeyBox.set(1)
+cbKey = tk.Checkbutton(mailFrame,textvariable=tkKey,variable=tkKeyBox, command=single_key_toggled).grid(row=3,column=0,sticky="W")
+tkKeyFTP = tk.IntVar()
+tkKeyFTP.set(1)
+cbKeyFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkKeyFTP).grid(row=3,column=1,sticky="W")
+boxList.append(tkKey)
+boxBoxList.append(tkKeyBox)
+boxftpList.append(tkKeyFTP)
 
-tkFile = tk.StringVar()
-tkFile.set("fileZipPSW")
-cbFile = tk.Checkbutton(mailFrame,textvariable=tkFile).grid(row=3,column=0,sticky="W")
+tkFileZip = tk.StringVar()
+tkFileZip.set("zip-psw of the file")
+tkFileZipBox = tk.IntVar()
+tkFileZipBox.set(1)
+cbFileZip = tk.Checkbutton(mailFrame,textvariable=tkFileZip,variable=tkFileZipBox).grid(row=4,column=0,sticky="W")
+tkFileZipFTP = tk.IntVar()
+cbFileZipFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkFileZipFTP).grid(row=4,column=1,sticky="W")
+boxList.append(tkFileZip)
+boxBoxList.append(tkFileZipBox)
+boxftpList.append(tkFileZipFTP)
 
-tkFile = tk.StringVar()
-tkFile.set("KeyZipPSW")
-cbFile = tk.Checkbutton(mailFrame,textvariable=tkFile).grid(row=4,column=0,sticky="W")
+tkKeyZip = tk.StringVar()
+tkKeyZip.set("zip-psw of the key")
+tkKeyZipBox = tk.IntVar()
+tkKeyZipBox.set(1)
+cbKeyZip = tk.Checkbutton(mailFrame,textvariable=tkKeyZip,variable=tkKeyZipBox).grid(row=5,column=0,sticky="W")
+tkKeyZipFTP = tk.IntVar()
+cbKeyZipFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkKeyZipFTP).grid(row=5,column=1,sticky="W")
+boxList.append(tkKeyZip)
+boxBoxList.append(tkKeyZipBox)
+boxftpList.append(tkKeyZipFTP)
 
-tkFile = tk.StringVar()
-tkFile.set("CSV")
-cbFile = tk.Checkbutton(mailFrame,textvariable=tkFile).grid(row=5,column=0,sticky="W")
+tkCSV = tk.StringVar()
+tkCSV.set("CSV")
+tkCSVBox = tk.IntVar()
+tkCSVBox.set(0)
+cbFile = tk.Checkbutton(mailFrame,textvariable=tkCSV,variable=tkCSVBox).grid(row=6,column=0,sticky="W")
+tkCSVFTP = tk.IntVar()
+cbCSVFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkCSVFTP).grid(row=6,column=1,sticky="W")
+boxList.append(tkCSV)
+boxBoxList.append(tkCSVBox)
+boxftpList.append(tkCSVFTP)
 
+lbShared = tk.Label (mailFrame, text="shared keys: ").grid(row=7,column=0,sticky="W")
+tkShared = tk.IntVar()
+spinShared = tk.Spinbox(mailFrame,textvariable=tkShared,values=[0,2,3],wrap=True,command=shared_keys_toggled).grid(row=7,column=1)
 
-# bijkomend lijstje voor FTP keuze
-cbFileFTP = tk.Checkbutton(mailFrame,text="FTP").grid(row=1,column=1,sticky="W")
-cbKeyFTP = tk.Checkbutton(mailFrame,text="FTP").grid(row=2,column=1,sticky="W")
-cbFilePSWFTP = tk.Checkbutton(mailFrame,text="FTP").grid(row=3,column=1,sticky="W")
-cbKeyPSWFTP = tk.Checkbutton(mailFrame,text="FTP").grid(row=4,column=1,sticky="W")
-cbCSVFTP = tk.Checkbutton(mailFrame,text="FTP").grid(row=5,column=1,sticky="W")
+lbSplit = tk.Label (mailFrame, text="split keys: ").grid(row=8,column=0,sticky="W")
+tkSplit = tk.IntVar()
+spinSplit = tk.Spinbox(mailFrame,textvariable=tkSplit,values=[0,2,3],wrap=True, command=split_keys_toggled).grid(row=8,column=1)
+
+lbSpacer3 = tk.Label(mailFrame,text=" ").grid(row=9,column=0)
+
+lbDuplicate = tk.Label(mailFrame,text="duplicate orders").grid(row=10,column=0,sticky="W")
+lbDupeExplanation = tk.Label(mailFrame,text="duplicates use A, B, C, ... in mail to differentiate. 1 means no duplication",
+                             wraplength=100,justify="left").grid(row=11,column=0,sticky="W")
+tkDuplicate = tk.IntVar()
+tkDuplicate.set(1)
+spinDuplicate = tk.Spinbox(mailFrame,from_=1,to=9,wrap=True,textvariable=tkDuplicate).grid(row=10,column=1)
+
 
 
 # bijkomend ALTERNATIEF voor devops EN/OF files naar een locatie in sharepoint
+tkDevOps = tk.IntVar()
+cbDevOps = tk.Checkbutton(mailFrame,text="devOps", variable=tkDevOps,command=devops_check).grid(row=1,column=1,sticky="W")
 
 # bijkomend lijstje met A,B,C... voor orders waarbij meerdere files verstuurd moeten worden
 
@@ -297,7 +467,7 @@ cbCSVFTP = tk.Checkbutton(mailFrame,text="FTP").grid(row=5,column=1,sticky="W")
 btnClearALL = tk.Button(root, text="clear all", command=clear_all).grid(row=0,column=4)
 
 # make a run button -> first it gets all data from all fields, then it drafts the mails
-btnRun = tk.Button(root, text= "draft mails", command=get_data).grid(row=6,column=1)
+btnRun = tk.Button(root, text= "draft mails", command=get_data_to_mails).grid(row=7,column=1)
 
 root.mainloop()
 
