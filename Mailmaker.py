@@ -22,6 +22,10 @@
 # opmaak aanpassen van Aptos 12 naar Gib sans mt 11?
 # CRID kan via OC in toekomst, dus best al implementeren
 # meerdere mails niet altijd naar dezelfde recipients!
+# checkbox where you can fill in what you need for a mailtype
+# pin en puk (+zip psw)
+# better recipient mail handling?
+# support komma en puntseparation in amounts?
 
 
 import re
@@ -38,18 +42,20 @@ def extract_pdf_data(path):
     doc = ""
     for page in pdfium.PdfDocument(path):
         doc += page.get_textpage().get_text_range()
-        
     print(doc)
-    
     if re.search("ORDER CONFIRMATION",doc):
         PO = re.findall(r"(?<=Purchase Order number : ).+",doc)[0]
         ICO = re.findall(r"(?<=Sales Order Number : )\d+",doc)[0]
         orderAmounts = re.findall(r"\d+(?= [\d,]+?.\d\d [\d,]+?.\d\d)",doc)
-    elif re.search("PICKING LIST", doc) or re.search("PACKING SLIP",doc):
+    elif re.search("PICKING LIST", doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
         orderAmounts = re.findall(r"(?<= \d\d/\d\d/\d\d )\d+",doc)
-
+    elif re.search("PACKING SLIP",doc):
+        PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
+        ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
+        orderAmounts = re.findall(r"\d+(?=\s\d+\s\d+)",doc)
+        print(orderAmounts)
 
     # check to see if FOC or RMA
     """if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
@@ -61,12 +67,16 @@ def extract_pdf_data(path):
     tokenList = []
     if re.search(r"\d{13}",doc):
         tokenList=re.findall(r"(?<=\d{13} ).+",doc)
-
     bigList = []
     for i in range(0,len(tokenList)):
         bigList.append(orderAmounts[i]+": "+tokenList[i])
     if len(bigList)==1:
         read_amount_and_type(bigList)
+    else:
+        # default to the first item in the list
+        temp = []
+        temp.append(bigList[0])
+        read_amount_and_type(temp)
     for item in bigList:
         listTokenType.insert(tk.END, item)
 
@@ -153,7 +163,7 @@ def read_amount_and_type(orderlist):
     """ splitst de EAN orderlijn naar type (dat verder verwerkt wordt) en naar hoeveelheid,
         zodat de hoeveelheden gesommeerd kunnen worden.
         """
-    print(orderlist)
+    
     orderType = re.split(": ",orderlist[0])[1].lower()
     tkType.set(find_order(orderType))
     if len(orderlist) == 1:
@@ -161,7 +171,6 @@ def read_amount_and_type(orderlist):
         tkAmount.set(orderAmount)
     elif len(orderlist) > 1:
         orderAmount = 0
-        print("warning, multiple orders will sum but only the first order is displayed as token type")
         for order in orderlist:
             orderAmount += int(re.split(": ",order)[0])
         tkAmount.set(str(orderAmount))
@@ -183,7 +192,7 @@ def find_order(order):
         ordertype+= " FX" + re.findall(r"(?<=digipass fx)\d+",order)[0]
     elif re.search("digipass ",order):
         ordertype+= re.findall(r"(?<=digipass )\d+",order)[0]
-    elif re.search("digipass",order):
+    elif re.search("digipass\d",order):
         ordertype+= re.findall(r"(?<=digipass)\d+",order)[0]
     elif re.search("fx ",order):
         ordertype+= " FX" + re.findall(r"(?<=fx )\d+",order)[0] 
@@ -489,7 +498,7 @@ lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=7)
 
 #p1 = tk.PhotoImage(file = 'Onespan_Logo.png')
 #root.iconphoto(False, p1)
-root.title("Onespan: send-a-raven                                             -- version 0.1.0 (beta)")
+root.title("Onespan: send-a-raven                                             -- version 0.2.1 (beta)")
 
 root.mainloop()
 
