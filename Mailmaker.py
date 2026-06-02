@@ -26,7 +26,7 @@
 # pin en puk (+zip psw)
 # better recipient mail handling?
 # support komma en puntseparation in amounts?
-
+# WARNING als niet alle essentiele vakken ingevuld zijn
 
 import re
 import pypdfium2 as pdfium
@@ -135,7 +135,7 @@ def get_data_to_mails():
         dupe = dupeTags[dupe]
         #mailList, ftpList, devOps
         if devOps:
-            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,customerName,dupe)
+            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,Url,customerName,dupe)
         else:
             for i in range(0,len(boxList)):
                 if boxBoxList[i].get():       #triggert enkel op een value 1 wat wil zeggen dat de box aangevinkt staat
