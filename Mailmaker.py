@@ -50,11 +50,11 @@ def extract_pdf_data(path):
     elif re.search("PICKING LIST", doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
-        orderAmounts = re.findall(r"(?<= \d\d/\d\d/\d\d )\d+",doc)
+        orderAmounts = re.findall(r"(?<= \d\d/\d\d/\d\d )[\d,]+",doc)
     elif re.search("PACKING SLIP",doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
-        orderAmounts = re.findall(r"\d+(?=\s\d+\s\d+)",doc)
+        orderAmounts = re.findall(r"[\d,]+(?=\s\d+\s\d+)",doc)
         print(orderAmounts)
 
     # check to see if FOC or RMA
@@ -111,6 +111,13 @@ def clear_all():
     tkExpire.set((datetime.today() + timedelta(days=31)).strftime(timeformat).upper())
     check_default()
     tkDuplicate.set(1)
+    for entry in boxRecList:
+        entry.set("")
+    for i in range(0, len(boxZipKeysRecList)):
+        boxKeysRecList[i].set("")
+        boxZipKeysRecList[i].set("")
+    tkUrl.set("")
+    tkCustomer.set("")
 
 def get_data_to_mails():
     """ wrapper functie voor draw_mail (en de andere types) die alle data verzameld en dan de mail mail opmaakt """
@@ -125,6 +132,7 @@ def get_data_to_mails():
     duplicates = tkDuplicate.get()
     customerName = tkCustomer.get()
     Url = tkUrl.get()
+    multipleKey = False
 
     if duplicates == 1:
         dupeTags = ["",""]
@@ -137,27 +145,49 @@ def get_data_to_mails():
         if devOps:
             draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,Url,customerName,dupe)
         else:
+            if tkShared.get() !=0:
+                for i in range(1, tkShared.get()+1):
+                    multipleKey=True
+                    newRecipients = boxKeysRecList[i-1].get() + ";" +boxRecList[1].get()+ ";"+ recipients
+                    deliveryFile = "shared key " + str(i)
+                    if boxftpList[1].get():
+                        draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, newRecipients,dupe)
+                    else:
+                        draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,newRecipients,dupe)
+                    if boxBoxList[3].get(): #if zip psw of keys needed, then make them for every shared key
+                        newRecipients = boxZipKeysRecList[i-1].get() + ";" +boxRecList[3].get()+ ";"+ recipients
+                        deliveryFile = boxList[3].get() + " " + str(i)
+                        if boxftpList[3].get():
+                            draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, newRecipients,dupe)
+                        else:
+                            draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,newRecipients,dupe)
+            elif tkSplit.get() !=0:
+                multipleKey=True
+                for i in range(1, tkSplit.get()+1):
+                    newRecipients = boxKeysRecList[i-1].get() + ";" +boxRecList[1].get()+ ";"+ recipients
+                    deliveryFile = "split key " + str(i)
+                    if boxftpList[1].get():
+                        draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, newRecipients,dupe)
+                    else:
+                        draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,newRecipients,dupe)
+                    if boxBoxList[3].get(): #if zip psw of keys needed, then make them for every shared key
+                        newRecipients = boxZipKeysRecList[i-1].get() + ";" +boxRecList[3].get()+ ";"+ recipients
+                        deliveryFile = boxList[3].get() + " " + str(i)
+                        if boxftpList[3].get():
+                            draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, newRecipients,dupe)
+                        else:
+                            draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,newRecipients,dupe)
+            # now loop over all other possible mails 
             for i in range(0,len(boxList)):
                 if boxBoxList[i].get():       #triggert enkel op een value 1 wat wil zeggen dat de box aangevinkt staat
+                    newRecipients = boxRecList[i].get() + ";" + recipients
                     deliveryFile = boxList[i].get()
-                    if boxftpList[i].get():      #als de overeenkomende ftp box ook aanstaat dan FTP mail in plaats van gewoon
-                        draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, recipients,dupe)
+                    if multipleKey and i==3:
+                        pass
+                    elif boxftpList[i].get():      #als de overeenkomende ftp box ook aanstaat dan FTP mail in plaats van gewoon
+                        draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, newRecipients,dupe)
                     else: 
-                        draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,recipients,dupe)
-        if tkShared.get() !=0:
-            for i in range(1, tkShared.get()+1):
-                deliveryFile = "shared key " + str(i)
-                if boxftpList[1].get():
-                    draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, recipients,dupe)
-                else:
-                    draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,recipients,dupe)
-        elif tkSplit.get() !=0:
-            for i in range(1, tkSplit.get()+1):
-                deliveryFile = "split key " + str(i)
-                if boxftpList[1].get():
-                    draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expireDate, recipients,dupe)
-                else:
-                    draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,recipients,dupe)
+                        draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,newRecipients,dupe)
 
 def read_amount_and_type(orderlist):
     """ splitst de EAN orderlijn naar type (dat verder verwerkt wordt) en naar hoeveelheid,
@@ -318,6 +348,16 @@ def devops_check():
     else: 
         check_default()
 
+def same_recipients_as_keys():
+    """ when zip recipients are the same as key recipients, this will autofill the boxes upon toggle
+    """
+    if tkSameRecsMult.get():
+        for i in range(0,len(boxZipKeysRecList)):
+            boxZipKeysRecList[i].set(boxKeysRecList[i].get())
+    else:
+        for i in range(0,len(boxZipKeysRecList)):
+            boxZipKeysRecList[i].set("")
+
 # hoofdscherm opmaken, naam is root alle widgets die op het hoofdscherm komen moeten naar root verwijzen
 # ineens ook koppelen aan drag en drop, dat wil zeggen dat je de file ANYWHERE op het hoofdscherm kan laten vallen
 root = TkinterDnD.Tk()  
@@ -334,15 +374,15 @@ entryPath = tk.Entry(root)
 entryPath.grid(row=0,column=1,columnspan=3,sticky="W", ipadx=100)
 
 # Label as spacer:
-lbSpacer1 = tk.Label(root,text="---------------------")
+lbSpacer1 = tk.Label(root,text=" ")
 lbSpacer1.grid(row=1, column=0)
 
 # tweede spacer, deze is niet nodig als spacer maar dient puur zodat een drag en drop vak hier kan gemaakt worden
-lbSpacer2 = tk.Label(root,text="----------------------------------------------------------------")
+lbSpacer2 = tk.Label(root,text=" ")
 lbSpacer2.grid(row=1, column=1,sticky="W",columnspan=3)
 
 # label en tekstvak voor recipients, tekstvak moet groot genoeg zijn om meerdere mail-adressen op te vangen, gescheiden door ";" ","" or " " or "\n"
-lbMail = tk.Label(root, text="recipients").grid(row=2, column=0)
+lbMail = tk.Label(root, text="global recipients (seperate with ;)",wraplength=90).grid(row=2, column=0)
 textMail = tk.Text(root,width=40,height=5)
 textMail.grid(row=2,column=1,columnspan=3,sticky="W")
 
@@ -387,13 +427,16 @@ listTokenType.grid(row=6,column=1,sticky="W",columnspan=2, ipadx=40)
 mailFrame = tk.Frame(root)
 mailFrame.grid(row=0,column=5,rowspan=11,sticky="NE")
 
-# label voor keuze uit mails (in dat frame)
-lbCheckBoxes =tk.Label(mailFrame,text="choose your mails here:").grid(row=0,column=0,sticky="W")
+# label voor keuze uit mails (in dat frame) en voor recipients
+lbCheckBoxes = tk.Label(mailFrame,text="choose your mails here:").grid(row=0,column=0,sticky="W")
+lbRecipients = tk.Label(mailFrame,text="add unique recipients:").grid(row=1,column=2,sticky="W")
+
 
 # lijstje van alle opties voor mails (ook in dat frame)
 boxList = []
 boxBoxList = []
 boxftpList = []
+boxRecList = []
 
 tkFile = tk.StringVar()
 tkFile.set("file")
@@ -403,9 +446,12 @@ cbFile = tk.Checkbutton(mailFrame,textvariable=tkFile,variable=tkFileBox).grid(r
 tkFileFTP = tk.IntVar()
 tkFileFTP.set(1)
 cbFileFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkFileFTP).grid(row=2,column=1,sticky="W")
+tkFileRec = tk.StringVar()
+entryFileRec = tk.Entry(mailFrame, textvariable=tkFileRec).grid(row=2,column=2,sticky="W")
 boxList.append(tkFile)
 boxBoxList.append(tkFileBox)
 boxftpList.append(tkFileFTP)
+boxRecList.append(tkFileRec)
 
 tkKey = tk.StringVar()
 tkKey.set("key")
@@ -415,9 +461,12 @@ cbKey = tk.Checkbutton(mailFrame,textvariable=tkKey,variable=tkKeyBox, command=s
 tkKeyFTP = tk.IntVar()
 tkKeyFTP.set(1)
 cbKeyFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkKeyFTP).grid(row=3,column=1,sticky="W")
+tkKeyRec = tk.StringVar()
+entryKeyRec = tk.Entry(mailFrame, textvariable=tkKeyRec).grid(row=3,column=2,sticky="W")
 boxList.append(tkKey)
 boxBoxList.append(tkKeyBox)
 boxftpList.append(tkKeyFTP)
+boxRecList.append(tkKeyRec)
 
 tkFileZip = tk.StringVar()
 tkFileZip.set("zip-psw of the file")
@@ -426,9 +475,12 @@ tkFileZipBox.set(1)
 cbFileZip = tk.Checkbutton(mailFrame,textvariable=tkFileZip,variable=tkFileZipBox).grid(row=4,column=0,sticky="W")
 tkFileZipFTP = tk.IntVar()
 cbFileZipFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkFileZipFTP).grid(row=4,column=1,sticky="W")
+tkFileZipRec = tk.StringVar()
+entryFileZipRec = tk.Entry(mailFrame, textvariable=tkFileZipRec).grid(row=4,column=2,sticky="W")
 boxList.append(tkFileZip)
 boxBoxList.append(tkFileZipBox)
 boxftpList.append(tkFileZipFTP)
+boxRecList.append(tkFileZipRec)
 
 tkKeyZip = tk.StringVar()
 tkKeyZip.set("zip-psw of the key")
@@ -437,21 +489,28 @@ tkKeyZipBox.set(1)
 cbKeyZip = tk.Checkbutton(mailFrame,textvariable=tkKeyZip,variable=tkKeyZipBox).grid(row=5,column=0,sticky="W")
 tkKeyZipFTP = tk.IntVar()
 cbKeyZipFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkKeyZipFTP).grid(row=5,column=1,sticky="W")
+tkKeyZipRec = tk.StringVar()
+entryKeyZipRec = tk.Entry(mailFrame, textvariable=tkKeyZipRec).grid(row=5,column=2,sticky="W")
 boxList.append(tkKeyZip)
 boxBoxList.append(tkKeyZipBox)
 boxftpList.append(tkKeyZipFTP)
+boxRecList.append(tkKeyZipRec)
 
 tkSerial = tk.StringVar()
 tkSerial.set("serial list")
 tkSerialBox = tk.IntVar()
 tkSerialBox.set(0)
-cbFile = tk.Checkbutton(mailFrame,textvariable=tkSerial,variable=tkSerialBox).grid(row=6,column=0,sticky="W")
+cbSerial = tk.Checkbutton(mailFrame,textvariable=tkSerial,variable=tkSerialBox).grid(row=6,column=0,sticky="W")
 tkSerialFTP = tk.IntVar()
 cbSerialFTP = tk.Checkbutton(mailFrame,text="FTP",variable=tkSerialFTP).grid(row=6,column=1,sticky="W")
+tkSerialRec = tk.StringVar()
+entrySerialRec = tk.Entry(mailFrame, textvariable=tkSerialRec).grid(row=6,column=2,sticky="W")
 boxList.append(tkSerial)
 boxBoxList.append(tkSerialBox)
 boxftpList.append(tkSerialFTP)
+boxRecList.append(tkSerialRec)
 
+# knoppen voor shared en split keys
 lbShared = tk.Label (mailFrame, text="shared keys: ").grid(row=7,column=0,sticky="W")
 tkShared = tk.IntVar()
 spinShared = tk.Spinbox(mailFrame,textvariable=tkShared,values=[0,2,3],wrap=True,command=shared_keys_toggled).grid(row=7,column=1)
@@ -460,16 +519,44 @@ lbSplit = tk.Label (mailFrame, text="split keys: ").grid(row=8,column=0,sticky="
 tkSplit = tk.IntVar()
 spinSplit = tk.Spinbox(mailFrame,textvariable=tkSplit,values=[0,2,3],wrap=True, command=split_keys_toggled).grid(row=8,column=1)
 
+# ontvangers voor shared of split keys
+lbmultipleRecipients = tk.Label(mailFrame,text="recipients for up to 3 keys: ").grid(row=7,column=2,sticky="W")
+boxKeysRecList = []
+tkKey1Rec = tk.StringVar()
+entryKey1Rec = tk.Entry(mailFrame, textvariable=tkKey1Rec).grid(row=8,column=2)
+boxKeysRecList.append(tkKey1Rec)
+tkKey2Rec = tk.StringVar()
+entryKey2Rec = tk.Entry(mailFrame, textvariable=tkKey2Rec).grid(row=9,column=2)
+boxKeysRecList.append(tkKey2Rec)
+tkKey3Rec = tk.StringVar()
+entryKey3Rec = tk.Entry(mailFrame, textvariable=tkKey3Rec).grid(row=10,column=2)
+boxKeysRecList.append(tkKey3Rec)
+
+# ontvangers voor de zips van shared of split keys
+lbZipMultipleRecipients = tk.Label(mailFrame,text="recipients key zip psw: ").grid(row=7,column=3,sticky="W")
+boxZipKeysRecList = []
+tkZipKey1Rec = tk.StringVar()
+entryZipKey1Rec = tk.Entry(mailFrame, textvariable=tkZipKey1Rec).grid(row=8,column=3)
+boxZipKeysRecList.append(tkZipKey1Rec)
+tkZipKey2Rec = tk.StringVar()
+entryZipKey2Rec = tk.Entry(mailFrame, textvariable=tkZipKey2Rec).grid(row=9,column=3)
+boxZipKeysRecList.append(tkZipKey2Rec)
+tkZipKey3Rec = tk.StringVar()
+entryZipKey3Rec = tk.Entry(mailFrame, textvariable=tkZipKey3Rec).grid(row=10,column=3)
+boxZipKeysRecList.append(tkZipKey3Rec)
+
+# knop om 1 op 1 dezelfde ontvangers te nemen als shared of split keys
+tkSameRecsMult = tk.IntVar()
+cbSameRecsMult = tk.Checkbutton(mailFrame, variable=tkSameRecsMult, text="same as keys",command=same_recipients_as_keys).grid(row=11,column=3)
+
 lbSpacer3 = tk.Label(mailFrame,text=" ").grid(row=9,column=0)
 
-lbDuplicate = tk.Label(mailFrame,text="duplicate orders").grid(row=10,column=0,sticky="W")
+lbDuplicate = tk.Label(mailFrame,text="duplicate orders").grid(row=11,column=0,sticky="W")
 lbDupeExplanation = tk.Label(mailFrame,text="duplicates use A, B, C, ... in mail to differentiate. 1 means no duplication",
-                             wraplength=100,justify="left").grid(row=11,column=0,sticky="W")
+                             wraplength=100,justify="left").grid(row=12,column=0,sticky="W")
 tkDuplicate = tk.IntVar()
 tkDuplicate.set(1)
-spinDuplicate = tk.Spinbox(mailFrame,from_=1,to=9,wrap=True,textvariable=tkDuplicate).grid(row=10,column=1)
-
-
+spinDuplicate = tk.Spinbox(mailFrame,from_=1,to=9,wrap=True,textvariable=tkDuplicate).grid(row=11,column=1)
 
 # bijkomend ALTERNATIEF voor devops EN/OF files naar een locatie in sharepoint
 tkDevOps = tk.IntVar()
@@ -492,13 +579,13 @@ btnClearALL = tk.Button(root, text="clear all", command=clear_all).grid(row=0,co
 
 # make a run button -> first it gets all data from all fields, then it drafts the mails
 btnRun = tk.Button(root, text= "draft mails", command=get_data_to_mails).grid(row=8,column=4)
-lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=7)
+lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=8)
 
 # customizing the window
 
 #p1 = tk.PhotoImage(file = 'Onespan_Logo.png')
 #root.iconphoto(False, p1)
-root.title("Onespan: send-a-raven                                             -- version 0.2.1 (beta)")
+root.title("Onespan: send-a-raven                                             -- version 0.3.2 (beta)")
 
 root.mainloop()
 
