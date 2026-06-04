@@ -15,17 +15,17 @@
 #        (bovenstaande om ICO en PO te wisselen in geval van FOC of RMA)
 #  wat als er meerdere EAN codes zijn die files kunnen geven? -> in dat geval een multiple choice "waarvan wil je files leveren?"
 #  En wat als er meerdere orders gecombineerd moeten worden? (meerdere opties kunnen selecteren en aantal optellen)
+# support komma en puntseparation in amounts?
+# meerdere mails niet altijd naar dezelfde recipients!
 
 # ----------------------------------stretch goals To Do----------------------------------
 # ESD uitlezen om accurater de vervaldatum in te geven automatisch
 # als ESD overdatum,  dan vandaag als default nemen + 31 dagen voor vervaldag
 # opmaak aanpassen van Aptos 12 naar Gib sans mt 11?
 # CRID kan via OC in toekomst, dus best al implementeren
-# meerdere mails niet altijd naar dezelfde recipients!
 # checkbox where you can fill in what you need for a mailtype
 # pin en puk (+zip psw)
 # better recipient mail handling?
-# support komma en puntseparation in amounts?
 # WARNING als niet alle essentiele vakken ingevuld zijn
 
 import re
@@ -143,7 +143,7 @@ def get_data_to_mails():
         dupe = dupeTags[dupe]
         #mailList, ftpList, devOps
         if devOps:
-            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,Url,customerName,dupe)
+            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,dupe)
         else:
             if tkShared.get() !=0:
                 for i in range(1, tkShared.get()+1):
@@ -296,7 +296,7 @@ def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate,
     mail.To = recipients
     mail.save()
 
-def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,Url,customerName,dupe):
+def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,dupe):
     """ maakt een draft en slaat die op in de inbox van de gebruiker
         alle inputs zijn strings, ook de getallen, 
         meerdere recipients in 1 string worden gescheiden door een puntkomma ;
@@ -305,8 +305,8 @@ def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,CRID,Url,customerName,dupe)
     outlook = win32.Dispatch("Outlook.Application")
 
     mail = outlook.CreateItem(0)  #  0: olMailItem
-    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe
-    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+dupe+"\n\n"+deliveryAmount+"pcs PRODUCTION "+tokenType+" for "+customerName+" URL: "+Url+"\nare available @: \\\\srv-colo1-fs\\tid-dpx\\"+ICO+customerName+mailSignature
+    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+")"+dupe
+    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+dupe+"\n\n"+deliveryAmount+"pcs PRODUCTION "+tokenType+" for "+customerName+" URL: "+Url+"\nare available @: \\\\srv-colo1-fs\\tid-dpx\\"+ICO+"_"+customerName+mailSignature
     mail.To = "devops@onespan.com"
     mail.save()
 
