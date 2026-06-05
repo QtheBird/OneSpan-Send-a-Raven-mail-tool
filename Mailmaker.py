@@ -212,33 +212,37 @@ def find_order(order):
             en dat elk order in kleine letters staat, op "OAS" filteren doe je dus met "oas"
     """
     ordertype = "DP"
-    if re.search("digipass go ",order):
+    if re.search(r"digipass go \d",order):
         ordertype+= "GO" + re.findall(r"(?<=digipass go )\d+",order)[0]
-    elif re.search("digipass go",order):
+    elif re.search(r"digipass go\d",order):
         ordertype+= "GO" + re.findall(r"(?<=digipass go)\d+",order)[0]
-    elif re.search("digipass fx ",order):
+    elif re.search(r"digipass go",order):
+        ordertype+= "GO " 
+    elif re.search(r"digipass fx \d",order):
         ordertype+= " FX" + re.findall(r"(?<=digipass fx )\d+",order)[0]
-    elif re.search("digipass fx",order):
+    elif re.search(r"digipass fx\d",order):
         ordertype+= " FX" + re.findall(r"(?<=digipass fx)\d+",order)[0]
-    elif re.search("digipass ",order):
+    elif re.search(r"digipass fx",order):
+        ordertype+= " FX " 
+    elif re.search(r"digipass \d",order):
         ordertype+= re.findall(r"(?<=digipass )\d+",order)[0]
-    elif re.search("digipass\d",order):
+    elif re.search(r"digipass\d",order):
         ordertype+= re.findall(r"(?<=digipass)\d+",order)[0]
-    elif re.search("fx ",order):
+    elif re.search(r"fx ",order):
         ordertype+= " FX" + re.findall(r"(?<=fx )\d+",order)[0] 
-    elif re.search("authentication suite",order):
+    elif re.search(r"authentication suite",order):
         ordertype = "OAS"
-    elif re.search("mobile authenticator es",order):
+    elif re.search(r"mobile authenticator es",order):
         ordertype = "MA ES"
-    elif re.search("^mss",order):
+    elif re.search(r"^mss",order):
         ordertype = "MSS"
-    elif re.search("^mas",order):
+    elif re.search(r"^mas",order):
         ordertype = "MAS"
-    elif re.search("oas enterprise",order):
+    elif re.search(r"oas enterprise",order):
         ordertype = "OAS"
-    elif re.search("^oas",order):
+    elif re.search(r"^oas",order):
         ordertype = "OAS"
-    elif re.search("onespan authentication",order):
+    elif re.search(r"onespan authentication",order):
         ordertype = "OAS"
 
     return ordertype
@@ -285,11 +289,16 @@ def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate,
         alle inputs zijn strings, ook de getallen, 
         meerdere recipients in 1 string worden gescheiden door een puntkomma ;
     """
+
+    if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
+        ftpName = PO
+    else:
+        ftpName = ICO
     mailSignature = "\n\n\nBest regards\nOnespan Logistics\n\n---------------------------------------------------------------------------\nOneSpan destroys the Digipass secrets of Digipass devices a certain period after delivery. This implies that redelivery of your DPX-, PSKC- or PIN-files is not possible anymore after this period.\n---------------------------------------------------------------------------\nIn case you have technical questions, please contact support@OneSpan.com\n---------------------------------------------------------------------------\nNotice of U.S. Export Controls for Restricted Products: Onespan and the Onespan products, technology software, deliverables, technical information, and related documents and materials and/or any other items deemed an export by the U.S. Government or EU jurisdictions are subject to the laws and regulations of the United States and the relevant EU jurisdictions. Diversion contrary to U.S., EU law is strictly prohibited.\nCONFIDENTIALITY NOTICE: The information contained in this transmittal, including any attachment, is privileged and confidential information and is intended only for the person or entity to which it is addressed.\n---------------------------------------------------------------------------"
     outlook = win32.Dispatch("Outlook.Application")
 
     date = str(datetime.today().strftime('%Y%m%d'))
-    ftpPart = "\n\nhttps://ftp.onespan.com"+"\nusername: "+ICO+"_"+date+"_"+deliveryFile.upper() + "\npassword: \naccount expires: " + expiredate
+    ftpPart = "\n\nhttps://ftp.onespan.com"+"\nusername: "+ftpName+"_"+date+"_"+deliveryFile.upper() + "\npassword: \naccount expires: " + expiredate
     mail = outlook.CreateItem(0)  #  0: olMailItem
     mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")" + dupe
     mail.Body = "Dear Customer,\n\n\nPlease find herewith your credentials where you can download the " +deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe +ftpPart + mailSignature
@@ -585,7 +594,7 @@ lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=8)
 
 #p1 = tk.PhotoImage(file = 'Onespan_Logo.png')
 #root.iconphoto(False, p1)
-root.title("Onespan: send-a-raven                                             -- version 0.3.2 (beta)")
+root.title("Onespan: send-a-raven                                             -- version 1.0.1 (beta)")
 
 root.mainloop()
 
