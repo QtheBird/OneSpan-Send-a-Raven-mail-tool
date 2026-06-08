@@ -42,7 +42,7 @@ def extract_pdf_data(path):
     doc = ""
     for page in pdfium.PdfDocument(path):
         doc += page.get_textpage().get_text_range()
-    print(doc)
+    #print(doc)
     if re.search("ORDER CONFIRMATION",doc):
         PO = re.findall(r"(?<=Purchase Order number : ).+",doc)[0]
         ICO = re.findall(r"(?<=Sales Order Number : )\d+",doc)[0]
@@ -54,8 +54,12 @@ def extract_pdf_data(path):
     elif re.search("PACKING SLIP",doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
-        orderAmounts = re.findall(r"[\d,]+(?=\s\d+\s\d+)",doc)
-        print(orderAmounts)
+        orderAmounts = re.findall(r"[\d,]+(?=\s[\d,]+\s[\d,]+)",doc)
+    elif re.search("DELIVERY NOTE",doc):
+        PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
+        ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
+        orderAmounts = re.findall(r"[\d,]+(?=\s[\d,]+\s[\d,]+)",doc)
+        
 
     # check to see if FOC or RMA
     """if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
@@ -122,6 +126,7 @@ def clear_all():
 def get_data_to_mails():
     """ wrapper functie voor draw_mail (en de andere types) die alle data verzameld en dan de mail mail opmaakt """
     deliveryAmount = tkAmount.get()
+    deliveryAmount = "{:,}".format(int(deliveryAmount))
     tokenType = tkType.get()
     ICO = tkICO.get()
     PO = tkPO.get()
@@ -197,12 +202,12 @@ def read_amount_and_type(orderlist):
     orderType = re.split(": ",orderlist[0])[1].lower()
     tkType.set(find_order(orderType))
     if len(orderlist) == 1:
-        orderAmount = re.split(": ",orderlist[0])[0]
+        orderAmount = re.split(": ",orderlist[0])[0].replace(",","")
         tkAmount.set(orderAmount)
     elif len(orderlist) > 1:
         orderAmount = 0
         for order in orderlist:
-            orderAmount += int(re.split(": ",order)[0])
+            orderAmount += int(re.split(": ",order.replace(",",""))[0])
         tkAmount.set(str(orderAmount))
 
 def find_order(order):
@@ -244,6 +249,8 @@ def find_order(order):
         ordertype = "OAS"
     elif re.search(r"onespan authentication",order):
         ordertype = "OAS"
+    elif re.search(r"multi-device",order):
+        ordertype = "MDL"
 
     return ordertype
 
@@ -592,8 +599,8 @@ lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=8)
 
 # customizing the window
 
-#p1 = tk.PhotoImage(file = 'Onespan_Logo.png')
-#root.iconphoto(False, p1)
+p1 = tk.PhotoImage(file = 'Send_a_Raven_Logo.png')
+root.iconphoto(False, p1)
 root.title("Onespan: send-a-raven                                             -- version 1.0.1 (beta)")
 
 root.mainloop()
