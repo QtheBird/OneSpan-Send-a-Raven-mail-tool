@@ -33,16 +33,19 @@ import pypdfium2 as pdfium
 import win32com.client as win32
 import tkinter as tk
 from tkinter import font
+from tkinter import Tk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 from datetime import datetime, timedelta
 timeformat = '%d%b%Y'   #global variable om ineens alle instanties te kunnen aanpassen in toekomstige versies
 
 def extract_pdf_data(path):
     """function that reads either a PL or an OC """
+    pdf = pdfium.PdfDocument(path)
     doc = ""
-    for page in pdfium.PdfDocument(path):
+    for page in pdf:
         doc += page.get_textpage().get_text_range()
-    #print(doc)
+    pdf.close()
+    print(doc)
     if re.search("ORDER CONFIRMATION",doc):
         PO = re.findall(r"(?<=Purchase Order number : ).+",doc)[0]
         ICO = re.findall(r"(?<=Sales Order Number : )\d+",doc)[0]
@@ -50,7 +53,7 @@ def extract_pdf_data(path):
     elif re.search("PICKING LIST", doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
-        orderAmounts = re.findall(r"(?<= \d\d/\d\d/\d\d )[\d,]+",doc)
+        orderAmounts = re.findall(r"(?<=\d\d/\d\d/\d\d )[\d,]+",doc)
     elif re.search("PACKING SLIP",doc):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
@@ -59,7 +62,6 @@ def extract_pdf_data(path):
         PO = re.findall(r"(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?<=Our Order Number: )\d+",doc)[0]
         orderAmounts = re.findall(r"[\d,]+(?=\s[\d,]+\s[\d,]+)",doc)
-        
 
     # check to see if FOC or RMA
     """if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
@@ -68,6 +70,10 @@ def extract_pdf_data(path):
         PO = ICO
         ICO = temp"""
     
+    # remove RMA that is often included in PO
+    if re.search(r"^RMA R\d+",PO):
+        PO = re.split(" ",PO)[1]
+
     tokenList = []
     if re.search(r"\d{13}",doc):
         tokenList=re.findall(r"(?<=\d{13} ).+",doc)
@@ -98,10 +104,6 @@ def drop(event):
     tkPO.set(out[0])
     return event.action
 
-def clear_path():
-    """verwijder het pad naar het bestand """
-    entryPath.delete(0,"end")
-
 def clear_all():
     """ verwijder alle info ingevuld in het document """
     entryPath.delete(0,"end")
@@ -114,6 +116,8 @@ def clear_all():
     listTokenType.delete(0,"end")
     tkExpire.set((datetime.today() + timedelta(days=31)).strftime(timeformat).upper())
     check_default()
+    tkDevOps.set(0)
+    tkDevOption.set("staging")
     tkDuplicate.set(1)
     for entry in boxRecList:
         entry.set("")
@@ -126,7 +130,8 @@ def clear_all():
 def get_data_to_mails():
     """ wrapper functie voor draw_mail (en de andere types) die alle data verzameld en dan de mail mail opmaakt """
     deliveryAmount = tkAmount.get()
-    deliveryAmount = "{:,}".format(int(deliveryAmount))
+    if not deliveryAmount == '':
+        deliveryAmount = "{:,}".format(int(deliveryAmount))
     tokenType = tkType.get()
     ICO = tkICO.get()
     PO = tkPO.get()
@@ -134,11 +139,11 @@ def get_data_to_mails():
     recipients = textMail.get(0.0,"end")
     expireDate = tkExpire.get()
     devOps = tkDevOps.get()
-    duplicates = tkDuplicate.get()
     customerName = tkCustomer.get()
     Url = tkUrl.get()
     multipleKey = False
 
+    duplicates = tkDuplicate.get()
     if duplicates == 1:
         dupeTags = ["",""]
     else: 
@@ -148,7 +153,8 @@ def get_data_to_mails():
         dupe = dupeTags[dupe]
         #mailList, ftpList, devOps
         if devOps:
-            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,dupe)
+            devType = tkDevOption.get()
+            draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,devType,dupe)
         else:
             if tkShared.get() !=0:
                 for i in range(1, tkShared.get()+1):
@@ -194,6 +200,23 @@ def get_data_to_mails():
                     else: 
                         draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID,newRecipients,dupe)
 
+def get_subject():
+    deliveryAmount = tkAmount.get()
+    if not deliveryAmount == '':
+        deliveryAmount = "{:,}".format(int(deliveryAmount))
+    tokenType = tkType.get()
+    ICO = tkICO.get()
+    PO = tkPO.get()
+    CRID = tkCRID.get()
+    subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"
+    
+    r = Tk()
+    r.withdraw()
+    r.clipboard_clear()
+    r.clipboard_append(subject)
+    r.update()
+    r.destroy()
+
 def read_amount_and_type(orderlist):
     """ splitst de EAN orderlijn naar type (dat verder verwerkt wordt) en naar hoeveelheid,
         zodat de hoeveelheden gesommeerd kunnen worden.
@@ -233,7 +256,7 @@ def find_order(order):
         ordertype+= re.findall(r"(?<=digipass )\d+",order)[0]
     elif re.search(r"digipass\d",order):
         ordertype+= re.findall(r"(?<=digipass)\d+",order)[0]
-    elif re.search(r"fx ",order):
+    elif re.search(r"fx \d",order):
         ordertype+= " FX" + re.findall(r"(?<=fx )\d+",order)[0] 
     elif re.search(r"authentication suite",order):
         ordertype = "OAS"
@@ -312,7 +335,7 @@ def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate,
     mail.To = recipients
     mail.save()
 
-def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,dupe):
+def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,devType,dupe):
     """ maakt een draft en slaat die op in de inbox van de gebruiker
         alle inputs zijn strings, ook de getallen, 
         meerdere recipients in 1 string worden gescheiden door een puntkomma ;
@@ -322,7 +345,7 @@ def draw_devOps_mail(deliveryAmount,tokenType,ICO,PO,Url,customerName,dupe):
 
     mail = outlook.CreateItem(0)  #  0: olMailItem
     mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+")"+dupe
-    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+dupe+"\n\n"+deliveryAmount+"pcs PRODUCTION "+tokenType+" for "+customerName+" URL: "+Url+"\nare available @: \\\\srv-colo1-fs\\tid-dpx\\"+ICO+"_"+customerName+mailSignature
+    mail.Body = "Dear Customer,\n\n\nThe DPX-files and DPX-keys for order ICO: "+ICO+"/ PO: "+PO+" "+dupe+"\n\n"+deliveryAmount+"pcs "+devType+" "+tokenType+" for "+customerName+" URL: "+Url+"\nare available @: \\\\srv-colo1-fs\\tid-dpx\\"+ICO+"_"+customerName+mailSignature
     mail.To = "devops@onespan.com"
     mail.save()
 
@@ -358,10 +381,12 @@ def devops_check():
         when it is unclicked it sets other checkboxes back to the default mailing
     """
     if tkDevOps.get():              #triggert enkel als tkDevops AANGEZET wordt, wat wil zeggen dat al de rest uit moet
+        tkDevOption.set("staging")
         for i in range(0,len(boxList)):     #nu alles 1 voor 1 uitzetten
             boxBoxList[i].set(0)
             boxftpList[i].set(0)
-    else: 
+    else:
+        tkDevOption.set("staging") 
         check_default()
 
 def same_recipients_as_keys():
@@ -440,8 +465,9 @@ listTokenType.bind('<<ListboxSelect>>',call_find_order)
 listTokenType.grid(row=6,column=1,sticky="W",columnspan=2, ipadx=40)
 
 # apart venster "Frame", puur voor opmaak
+lbspacer6 = tk.Label(root,text="    ").grid(row=0,column=5)
 mailFrame = tk.Frame(root)
-mailFrame.grid(row=0,column=5,rowspan=11,sticky="NE")
+mailFrame.grid(row=0,column=6,rowspan=11,sticky="NE")
 
 # label voor keuze uit mails (in dat frame) en voor recipients
 lbCheckBoxes = tk.Label(mailFrame,text="choose your mails here:").grid(row=0,column=0,sticky="W")
@@ -568,40 +594,47 @@ cbSameRecsMult = tk.Checkbutton(mailFrame, variable=tkSameRecsMult, text="same a
 lbSpacer3 = tk.Label(mailFrame,text=" ").grid(row=9,column=0)
 
 lbDuplicate = tk.Label(mailFrame,text="duplicate orders").grid(row=11,column=0,sticky="W")
-lbDupeExplanation = tk.Label(mailFrame,text="duplicates use A, B, C, ... in mail to differentiate. 1 means no duplication",
-                             wraplength=100,justify="left").grid(row=12,column=0,sticky="W")
+# lbDupeExplanation = tk.Label(mailFrame,text="duplicates use A, B, C, ... in mail to differentiate. 1 means no duplication",
+#                              wraplength=100,justify="left").grid(row=12,column=0,sticky="W")
 tkDuplicate = tk.IntVar()
 tkDuplicate.set(1)
 spinDuplicate = tk.Spinbox(mailFrame,from_=1,to=9,wrap=True,textvariable=tkDuplicate).grid(row=11,column=1)
 
 # bijkomend ALTERNATIEF voor devops EN/OF files naar een locatie in sharepoint
+lbspacer7 = tk.Label(mailFrame,text=" ").grid(row=12,column=0)
+devOpsFrame = tk.Frame(mailFrame)
+devOpsFrame.grid(row=13,column=0,rowspan=5,columnspan=5,sticky="NW")
 tkDevOps = tk.IntVar()
-cbDevOps = tk.Checkbutton(mailFrame,text="devOps", variable=tkDevOps,command=devops_check).grid(row=1,column=1,sticky="W")
+cbDevOps = tk.Checkbutton(devOpsFrame,text="devOps", variable=tkDevOps,command=devops_check).grid(row=0,column=0,sticky="W")
 
-lbCustomer = tk.Label(root,text="Customer name (devops): ").grid(row=7,column=0)
+# selectie opties voor de verschillende types DevOps orders: Staging (default), production of sandbox
+tkDevOption = tk.StringVar()
+sbDevOps = tk.Spinbox(devOpsFrame,textvariable=tkDevOption,values=["staging","production","sandbox"],wrap=True).grid(row=0,column=1,sticky="W")
+
+# customer name and url for devops mails
+lbCustomer = tk.Label(devOpsFrame,text="Customer name (devops): ").grid(row=2,column=0)
 tkCustomer = tk.StringVar()
-entryCustomer = tk.Entry(root, textvariable=tkCustomer).grid(row=7,column=1)
+entryCustomer = tk.Entry(devOpsFrame, textvariable=tkCustomer).grid(row=2,column=1)
 
-lbUrl = tk.Label(root,text="URL (devops): ").grid(row=7, column=2)
+lbUrl = tk.Label(devOpsFrame,text="URL (devops): ").grid(row=2, column=2)
 tkUrl = tk.StringVar()
-entryUrl = tk.Entry(root,textvariable=tkUrl).grid(row=7,column=3)
-# url en klantnaam moet dus ook ingevuld kunnen worden voor devOps
-
-# make a clear button for the file path
-# btnClear = tk.Button(root, text="clear path", command=clear_path).grid(row=0,column=4)
+entryUrl = tk.Entry(devOpsFrame,textvariable=tkUrl).grid(row=2,column=3)
 
 # make a button that clears everything
 btnClearALL = tk.Button(root, text="clear all", command=clear_all).grid(row=0,column=4)
 
 # make a run button -> first it gets all data from all fields, then it drafts the mails
-btnRun = tk.Button(root, text= "draft mails", command=get_data_to_mails).grid(row=8,column=4)
-lbSpacer4 = tk.Label(root,text="        ").grid(row=9,column=8)
+lbSpacer4 = tk.Label(root,text="        ").grid(row=8,column=8)
+btnRun = tk.Button(root, text= "draft mails", command=get_data_to_mails).grid(row=9,column=4)
+lbSpacer5= tk.Label(root,text=" ").grid(row=10,column=10)
+
+# make a button that adds the subject line to subject for delivery portal mails (QC)
+btnPortal = tk.Button(root,text="copy subject line", command=get_subject).grid(row=9,column=1)
 
 # customizing the window
-
 p1 = tk.PhotoImage(file = 'Send_a_Raven_Logo.png')
 root.iconphoto(False, p1)
-root.title("Onespan: send-a-raven                                             -- version 1.0.1 (beta)")
+root.title("Onespan: send-a-raven                                             -- version 1.1.2")
 
 root.mainloop()
 
