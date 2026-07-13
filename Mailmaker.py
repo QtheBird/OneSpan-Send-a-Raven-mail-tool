@@ -20,18 +20,26 @@ def extract_pdf_data(path):
         PO = re.findall(r"(?i)(?<=Purchase Order number : ).+",doc)[0]
         ICO = re.findall(r"(?i)(?<=Sales Order Number : )\d+",doc)[0]
         orderAmounts = re.findall(r"\d+(?= [\d,]+?.\d\d [\d,]+?.\d\d)",doc)
+        try: CRID = re.findall(r"(?i)(?<=Configuration Id: ).+",doc)[0]
+        except: CRID = ""
     elif re.search("PICKING LIST", doc):
         PO = re.findall(r"(?i)(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?i)(?<=Our Order Number: )\d+",doc)[0]
         orderAmounts = re.findall(r"(?<=\d\d[/-]\d\d[/-]\d\d )[\d,]+",doc)
+        try: CRID = re.findall(r"(?i)(?<=CRID Number: ).+",doc)[0]
+        except: CRID = ""
     elif re.search("PACKING SLIP",doc):
         PO = re.findall(r"(?i)(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?i)(?<=Our Order Number: )\d+",doc)[0]
         orderAmounts = re.findall(r"[\d,]+(?=\s[\d,]+\s[\d,]+)",doc)
+        try: CRID = re.findall(r"(?i)(?<=CRID Number: ).+",doc)[0]
+        except: CRID = ""
     elif re.search("DELIVERY NOTE",doc):
         PO = re.findall(r"(?i)(?<=Your Purchase Order Number: ).+",doc)[0]
         ICO = re.findall(r"(?i)(?<=Our Order Number: )\d+",doc)[0]
         orderAmounts = re.findall(r"[\d,]+(?=\s[\d,]+\s[\d,]+)",doc)
+        try: CRID = re.findall(r"(?i)(?<=CRID Number: ).+",doc)[0]
+        except: CRID = ""
 
     # check to see if FOC or RMA
     """if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
@@ -63,7 +71,7 @@ def extract_pdf_data(path):
     # check for, and remove, trailing whitespaces
     PO = " ".join(PO.split())
     ICO = " ".join(ICO.split())
-    return(PO,ICO)
+    return(PO,ICO,CRID)
 
 def drop(event):
     """ definieer wat er moet gebeuren op het moment dat je een pdf dropt in het tekstvak """
@@ -75,6 +83,7 @@ def drop(event):
     out = extract_pdf_data(path)
     tkICO.set(out[1])
     tkPO.set(out[0])
+    tkCRID.set(out[2])
     return event.action
 
 def clear_all():
