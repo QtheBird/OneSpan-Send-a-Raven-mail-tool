@@ -291,8 +291,12 @@ def draw_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, recipients,dupe
     outlook = win32.Dispatch("Outlook.Application")
 
     mail = outlook.CreateItem(0)  #  0: olMailItem
-    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe
-    mail.Body = "Dear Customer,\n\n\nPlease find attached the "+deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe+mailSignature
+    if not CRID == "":
+        mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe
+        mail.Body = "Dear Customer,\n\n\nPlease find attached the "+deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe+mailSignature
+    else:
+        mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+")"+dupe
+        mail.Body = "Dear Customer,\n\n\nPlease find attached the "+deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+")"+dupe+mailSignature
     mail.To = recipients
     mail.save()
 
@@ -301,7 +305,9 @@ def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate,
         alle inputs zijn strings, ook de getallen, 
         meerdere recipients in 1 string worden gescheiden door een puntkomma ;
     """
-
+    
+    if re.search(r" of the ",deliveryFile):
+        deliveryFile = re.sub(r" of the ","_",deliveryFile)
     if re.search(r"\dF\d", PO) or re.search(r"^R\d+",PO) or re.search(r"^RMA R\d+",PO):
         ftpName = PO
     else:
@@ -312,8 +318,12 @@ def draw_ftp_mail(deliveryAmount,deliveryFile,tokenType,ICO,PO,CRID, expiredate,
     date = str(datetime.today().strftime('%Y%m%d'))
     ftpPart = "\n\nhttps://ftp.onespan.com"+"\nusername: "+ftpName+"_"+date+"_"+deliveryFile.upper() + "\npassword: \naccount expires: " + expiredate
     mail = outlook.CreateItem(0)  #  0: olMailItem
-    mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")" + dupe
-    mail.Body = "Dear Customer,\n\n\nPlease find herewith your credentials where you can download the " +deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe +ftpPart + mailSignature
+    if not CRID == "":
+        mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")" + dupe
+        mail.Body = "Dear Customer,\n\n\nPlease find herewith your credentials where you can download the " +deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+" / CRID: "+CRID+")"+dupe +ftpPart + mailSignature
+    else:
+        mail.Subject = deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+")" + dupe
+        mail.Body = "Dear Customer,\n\n\nPlease find herewith your credentials where you can download the " +deliveryFile+" for your order for "+deliveryAmount+"pcs "+tokenType+" (ICO: "+ICO+" / PO: "+PO+")"+dupe +ftpPart + mailSignature
     mail.To = recipients
     mail.save()
 
